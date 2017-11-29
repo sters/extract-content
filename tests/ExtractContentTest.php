@@ -127,4 +127,53 @@ class ExtractContentTest extends TestCase
         $result = $this->invokePrivateMethod($extractor, 'hasOnlyTags', '<p>Its paragraph.</p>');
         $this->assertFalse($result);
     }
+
+    public function testEliminateLink()
+    {
+        $extractor = new ExtractContent('dammy');
+
+        $content = [];
+        $content[] = '<p>not modified</p>';
+        $content[] = '<ul>';
+        $content[] = '<li><a href="#">link list item</a></li>';
+        $content[] = '</ul>';
+        $content = implode("\n", $content);
+        $result = $this->invokePrivateMethod($extractor, 'eliminateLink', $content);
+        $this->assertEmpty($result);
+
+        $content = [];
+        $content[] = '<p>not modified</p>';
+        $content = implode("\n", $content);
+        $result = $this->invokePrivateMethod($extractor, 'eliminateLink', $content);
+        $this->assertNotEmpty($result);
+    }
+
+    public function testIsLinkList()
+    {
+        $extractor = new ExtractContent('dammy');
+
+        $result = $this->invokePrivateMethod($extractor, 'isLinkList', '<ul><li>list item</li></ul>');
+        $this->assertFalse($result);
+        $result = $this->invokePrivateMethod($extractor, 'isLinkList', '<div>no list here. <ul><li>list item</li></ul></div>');
+        $this->assertFalse($result);
+        $result = $this->invokePrivateMethod($extractor, 'isLinkList', '<p>Its paragraph.</p>');
+        $this->assertFalse($result);
+
+        $result = $this->invokePrivateMethod($extractor, 'isLinkList', '<div>no list here. <ul><li><a href="#">link list item</a></li></ul></div>');
+        $this->assertTrue($result);
+    }
+
+    /**
+     * @skip
+     */
+    public function testAnalyse()
+    {
+        $this->markTestSkipped('The test using Wikipedia content.');
+
+        $extractor = new ExtractContent(file_get_contents('https://en.wikipedia.org/wiki/PHPUnit'));
+
+        $result = $extractor->analyse();
+        $this->assertContains('PHPUnit is based on the idea that developers should be able to find mistakes in their newly committed code quickly and assert', $result[0]);
+        $this->assertEquals('PHPUnit - Wikipedia', $result[1]);
+    }
 }
