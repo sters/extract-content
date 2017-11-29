@@ -163,9 +163,6 @@ class ExtractContentTest extends TestCase
         $this->assertTrue($result);
     }
 
-    /**
-     * @skip
-     */
     public function testAnalyse()
     {
         $this->markTestSkipped('The test using Wikipedia content.');
