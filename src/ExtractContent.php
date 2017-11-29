@@ -278,27 +278,38 @@ class ExtractContent
         $this->options[$name] = $value;
     }
 
-    public function analyse(string $html, $opt = null)
+    public function analyse()
     {
-        $this->html = $html;
-
         if ($this->isFramesetHtml() || $this->isRedirectHtml()) {
             return [
                 '',
-                $this->extractTitle(),
+                $this->extractTitle($this->html),
             ];
         }
-    }
 
-    public function extractTitle(): string
-    {
-        $result = '';
+        $targetHtml = $this->html;
 
-        if (preg_match('/<title[^>]*>\s*(.*?)\s*<\/title\s*>/i', $this->html, $matches)) {
-            $result = html_entity_decode(strip_tags($matches[1]), ENT_QUOTES);
+        // Title
+        $title = $this->extract_title($targetHtml);
+
+        // Text
+        $targetHtml = $this->extractAdSection($targetHtml);
+        $targetHtml = $this->hBlockIncludingTitle($title, $targetHtml);
+
+        // Extract text blocks
+        $factor = 1.0;
+        $continuous = 1.0;
+        $body = '';
+        $score = 0;
+        $bodyList = [];
+        $list = preg_split('/<\/?(?:div|center|td)[^>]*>|<p\s*[^>]*class\s*=\s*["\']?(?:posted|plugin-\w+)[\'"]?[^>]*>/', $targetHtml);
+        foreach ($list as $block) {
+            if (empty($block)) {
+                continue;
+            }
+
+            $block = trim($block);
         }
-
-        return $result;
     }
 
     private function isFramesetHtml(): bool
@@ -309,6 +320,63 @@ class ExtractContent
     private function isRedirectHtml(): bool
     {
         return preg_match('/<meta\s+http-equiv\s*=\s*["\']?refresh[\'"]?[^>]*url/i', $this->html);
+    }
+
+    private function extractTitle($html): string
+    {
+        $result = '';
+
+        if (preg_match('/<title[^>]*>\s*(.*?)\s*<\/title\s*>/i', $html, $matches)) {
+            $result = html_entity_decode(strip_tags($matches[1]), ENT_QUOTES);
+        }
+
+        return $result;
+    }
+
+    private function extractAdSection($html): string
+    {
+        $html = preg_replace('/<!--\s*google_ad_section_start\(weight=ignore\)\s*-->.*?<!--\s*google_ad_section_end.*?-->/s', '', $html);
+        if (preg_match('/<!--\s*google_ad_section_start[^>]*-->/', $html)) {
+            preg_match_all('/<!--\s*google_ad_section_start[^>]*-->(.*?)<!--\s*google_ad_section_end.*?-->/s', $html, $matches);
+            $html = implode("\n", $matches[1]);
+        }
+
+        return $html;
+    }
+
+    private function eliminateUselessTags($html): string
+    {
+        // eliminate useless symbols
+        $html = preg_replace('/[\342\200\230-\342\200\235]|[\342\206\220-\342\206\223]|[\342\226\240-\342\226\275]|[\342\227\206-\342\227\257]|\342\230\205|\342\230\206/', '', $html);
+
+        // eliminate useless html tags
+        $html = preg_replace('/<(script|style|select|noscript)[^>]*>.*?<\/\1\s*>/is', '', $html);
+        $html = preg_replace('/<!--.*?-->/s', '', $html);
+        $html = preg_replace('/<![A-Za-z].*?>/', '', $html);
+        $html = preg_replace('/<div\s[^>]*class\s*=\s*[\'"]?alpslab-slide["\']?[^>]*>.*?<\/div\s*>/s', '', $html);
+        $html = preg_replace('/<div\s[^>]*(id|class)\s*=\s*[\'"]?\S*more\S*["\']?[^>]*>/i', '', $html);
+
+        return $html;
+    }
+
+    private function hBlockIncludingTitle($title, $html): string
+    {
+        return preg_replace_callback('/(<h\d\s*>\s*(.*?)\s*<\/h\d\s*>)/i', function($match) use ($title) {
+            if (strlen($match[2]) >= 3 && strpos($title, $match[2]) !== false) {
+                return '<div>' . $match[2] . '</div>';
+            }
+
+            return $match[1];
+        }, $html);
+    }
+
+    private function hasOnlyTags($html): bool
+    {
+        $html = preg_replace('/<[^>]*>/is', '', $html);
+        $html = str_replace('&nbsp;','', $html);
+        $html = trim($html);
+
+        return strlen($html) === 0;
     }
 }
 
