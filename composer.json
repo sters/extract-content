@@ -1,0 +1,23 @@
+{
+  "name": "sters/extract-content",
+  "description": "Extract web articles",
+  "type": "library",
+  "license": "MIT",
+  "require": {},
+  "require-dev": {
+    "phpunit/phpunit": "*"
+  },
+  "autoload": {
+    "psr-4": {
+      "ExtractContent\\": "src"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "ExtractContent\\Test\\": "tests"
+    }
+  },
+  "scripts": {
+    "test": "phpunit"
+  }
+}
