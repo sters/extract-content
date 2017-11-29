@@ -290,10 +290,10 @@ class ExtractContent
         $targetHtml = $this->html;
 
         // Title
-        $title = $this->extract_title($targetHtml);
+        $title = $this->extractTitle($targetHtml);
 
-        // Text
         $targetHtml = $this->extractAdSection($targetHtml);
+        $targetHtml = $this->eliminateUselessTags($targetHtml);
         $targetHtml = $this->hBlockIncludingTitle($title, $targetHtml);
 
         // Extract text blocks
@@ -309,7 +309,73 @@ class ExtractContent
             }
 
             $block = trim($block);
+            if ($this->hasOnlyTags($block)) {
+                continue;
+            }
+
+            if (! empty($body) > 0) {
+                $continuous /= $this->options['continuous_factor'];
+            }
+
+            // check link list
+            $notLinked = $this->eliminateLink($block);
+            if (strlen($notLinked) < $this->options['min_length']) {
+                continue;
+            }
+
+            // calculate score
+            $punctuations = preg_split($this->options['punctuations'], $notLinked);
+            $c = strlen($notLinked) + count($punctuations) * $this->options['punctuation_weight'] * $factor;
+            $factor *= $this->options['decay_factor'];
+
+            $wasteBlock = preg_split($this->options['waste_expressions'], $block);
+            $amazonBlock = preg_split('/amazon[a-z0-9\.\/\-\?&]+-22/i', $block);
+            $notBodyRate = count($wasteBlock) + count($amazonBlock) / 2.0;
+
+            if ($notBodyRate > 0) {
+                $c *= 0.72 ** $notBodyRate;
+            }
+
+            $c1 = $c * $continuous;
+
+            if ($this->options['debug']) {
+                $notLinkedCount = count($notLinked);
+                $stripTags = substr(strip_tags($block), 0, 100);
+                echo "----- {$c}*{$continuous}={$c1} {$notLinkedCount} \n{$stripTags}\n";
+            }
+
+            // extract block, add score
+            if ($c1 > $this->options['threshold']) {
+                $body .= $block . "\n";
+                $score += $c1;
+                $continuous = $this->options['continuous_factor'];
+            } elseif ($c > $this->options['threshold']) {
+                $bodyList[] = [
+                    $body,
+                    $score,
+                ];
+                $body = $block . "\n";
+                $score = $c;
+                $continuous = $this->options['continuous_factor'];
+            }
         }
+
+        $bodyList[] = [
+            $body,
+            $score,
+        ];
+        $body = array_reduce($bodyList, function($a, $b) {
+            if ($a[1] > $b[1]) {
+                return $a;
+            } else {
+                return $b;
+            }
+        });
+
+        return [
+            strip_tags($body[0]),
+            $title,
+        ];
     }
 
     private function isFramesetHtml(): bool
@@ -344,6 +410,26 @@ class ExtractContent
         return $html;
     }
 
+    private function hBlockIncludingTitle($title, $html): string
+    {
+        return preg_replace_callback('/(<h\d\s*>\s*(.*?)\s*<\/h\d\s*>)/i', function ($match) use ($title) {
+            if (strlen($match[2]) >= 3 && strpos($title, $match[2]) !== false) {
+                return '<div>' . $match[2] . '</div>';
+            }
+
+            return $match[1];
+        }, $html);
+    }
+
+    private function hasOnlyTags($html): bool
+    {
+        $html = preg_replace('/<[^>]*>/is', '', $html);
+        $html = str_replace('&nbsp;', '', $html);
+        $html = trim($html);
+
+        return strlen($html) === 0;
+    }
+
     private function eliminateUselessTags($html): string
     {
         // eliminate useless symbols
@@ -359,26 +445,58 @@ class ExtractContent
         return $html;
     }
 
-    private function hBlockIncludingTitle($title, $html): string
+    private function eliminateLink($html): string
     {
-        return preg_replace_callback('/(<h\d\s*>\s*(.*?)\s*<\/h\d\s*>)/i', function($match) use ($title) {
-            if (strlen($match[2]) >= 3 && strpos($title, $match[2]) !== false) {
-                return '<div>' . $match[2] . '</div>';
+        $count = 0;
+        $notLinked = preg_replace_callback('/<a\s[^>]*>.*?<\/a\s*>/is', function ($matched) use (&$count) {
+            $count++;
+
+            return '';
+        }, $html);
+        $notLinked = preg_replace('/<form\s[^>]*>.*?<\/form\s *>/ims', '', $notLinked);
+        $notLinked = strip_tags($notLinked);
+
+        if (strlen($notLinked) < 20 * $count || $this->isLinkList($html)) {
+            return '';
+        }
+
+        return $notLinked;
+    }
+
+    private function isLinkList($html): bool
+    {
+        if (preg_match('/<(?:ul|dl|ol)(.+?)<\/(?:ul|dl|ol)>/is', $html, $matched)) {
+            $listPart = $matched[1];
+            $outside = preg_replace('/<(?:ul|dl)(.+?)<\/(?:ul|dl)>/is', '', $html);
+            $outside = preg_replace('/<.+?>/s', '', $outside);
+            $outside = preg_replace('/\s+/s', ' ', $outside);
+            $list = preg_split('/<li[^>]*>/', $listPart);
+            array_shift($list);
+
+            $rate = $this->evaluateList($list);
+            if ($rate == 1) {
+                return false;
             }
 
-            return $match[1];
-        }, $html);
+            return strlen($outside) <= (strlen($html) / (45 / $rate));
+        }
+
+        return false;
     }
 
-    private function hasOnlyTags($html): bool
+    private function evaluateList(array $list): float
     {
-        $html = preg_replace('/<[^>]*>/is', '', $html);
-        $html = str_replace('&nbsp;','', $html);
-        $html = trim($html);
+        if (empty($list)) {
+            return 1;
+        }
 
-        return strlen($html) === 0;
+        $hit = 0;
+        foreach ($list as $line) {
+            if (preg_match('/<a\s+href=([\'"]?)([^"\'\s]+)\1/is', $line)) {
+                $hit++;
+            }
+        }
+
+        return 9 * (1.0 * $hit / count($list)) ** 2 + 1;
     }
 }
-
-
-
