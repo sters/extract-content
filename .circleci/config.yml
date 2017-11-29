@@ -15,4 +15,4 @@ jobs:
           paths:
             - ./vendor
           key: v1-dependencies-{{ checksum "composer.json" }}
-      - run: phpunit
+      - run: composer phpunit
