@@ -18,8 +18,8 @@ class ExtractContent
         'decay_factor'       => 0.73,
         'continuous_factor'  => 1.62,
         'punctuation_weight' => 10,
-        'punctuations'       => '/([、。，．！？]|\.[^A-Za-z0-9]|,[^0-9]|!|\?)/',
-        'waste_expressions'  => '/Copyright | All Rights Reserved/i',
+        'punctuations'       => '/([、。，．！？]|\.[^A-Za-z0-9]|,[^0-9]|!|\?)/u',
+        'waste_expressions'  => '/Copyright | All Rights Reserved/iu',
         'dom_separator'      => '',
         'debug'              => false,
     ];
@@ -100,7 +100,7 @@ class ExtractContent
         $body = '';
         $score = 0;
         $bodyList = [];
-        $list = preg_split('/<\/?(?:div|center|td)[^>]*>|<p\s*[^>]*class\s*=\s*["\']?(?:posted|plugin-\w+)[\'"]?[^>]*>/', $targetHtml);
+        $list = preg_split('/<\/?(?:div|center|td)[^>]*>|<p\s*[^>]*class\s*=\s*["\']?(?:posted|plugin-\w+)[\'"]?[^>]*>/u', $targetHtml);
         foreach ($list as $block) {
             if (empty($block)) {
                 continue;
@@ -127,7 +127,7 @@ class ExtractContent
             $factor *= $this->options['decay_factor'];
 
             $wasteBlock = preg_split($this->options['waste_expressions'], $block);
-            $amazonBlock = preg_split('/amazon[a-z0-9\.\/\-\?&]+-22/i', $block);
+            $amazonBlock = preg_split('/amazon[a-z0-9\.\/\-\?&]+-22/iu', $block);
             $notBodyRate = count($wasteBlock) + count($amazonBlock) / 2.0;
 
             if ($notBodyRate > 0) {
@@ -137,7 +137,7 @@ class ExtractContent
             $c1 = $c * $continuous;
 
             if ($this->options['debug']) {
-                $notLinkedCount = count($notLinked);
+                $notLinkedCount = strlen($notLinked);
                 $stripTags = substr(strip_tags($block), 0, 100);
                 echo "----- {$c}*{$continuous}={$c1} {$notLinkedCount} \n{$stripTags}\n";
             }
@@ -163,7 +163,7 @@ class ExtractContent
             $score,
         ];
         $body = array_reduce($bodyList, function($a, $b) {
-            if ($a[1] > $b[1]) {
+            if ($a[1] >= $b[1]) {
                 return $a;
             } else {
                 return $b;
@@ -171,7 +171,7 @@ class ExtractContent
         });
 
         return [
-            strip_tags($body[0]),
+            trim(strip_tags($body[0])),
             $title,
         ];
     }
@@ -201,7 +201,7 @@ class ExtractContent
     {
         $result = '';
 
-        if (preg_match('/<title[^>]*>\s*(.*?)\s*<\/title\s*>/i', $html, $matches)) {
+        if (preg_match('/<title[^>]*>\s*(.*?)\s*<\/title\s*>/iu', $html, $matches)) {
             $result = html_entity_decode(strip_tags($matches[1]), ENT_QUOTES);
         }
 
@@ -215,9 +215,9 @@ class ExtractContent
      */
     private function extractAdSection(string $html): string
     {
-        $html = preg_replace('/<!--\s*google_ad_section_start\(weight=ignore\)\s*-->.*?<!--\s*google_ad_section_end.*?-->/s', '', $html);
-        if (preg_match('/<!--\s*google_ad_section_start[^>]*-->/', $html)) {
-            preg_match_all('/<!--\s*google_ad_section_start[^>]*-->(.*?)<!--\s*google_ad_section_end.*?-->/s', $html, $matches);
+        $html = preg_replace('/<!--\s*google_ad_section_start\(weight=ignore\)\s*-->.*?<!--\s*google_ad_section_end.*?-->/su', '', $html);
+        if (preg_match('/<!--\s*google_ad_section_start[^>]*-->/u', $html)) {
+            preg_match_all('/<!--\s*google_ad_section_start[^>]*-->(.*?)<!--\s*google_ad_section_end.*?-->/su', $html, $matches);
             $html = implode("\n", $matches[1]);
         }
 
@@ -232,7 +232,7 @@ class ExtractContent
      */
     private function hBlockIncludingTitle(string $title, string $html): string
     {
-        return preg_replace_callback('/(<h\d\s*>\s*(.*?)\s*<\/h\d\s*>)/i', function ($match) use ($title) {
+        return preg_replace_callback('/(<h\d\s*>\s*(.*?)\s*<\/h\d\s*>)/iu', function ($match) use ($title) {
             if (strlen($match[2]) >= 3 && strpos($title, $match[2]) !== false) {
                 return '<div>' . $match[2] . '</div>';
             }
@@ -248,7 +248,7 @@ class ExtractContent
      */
     private function hasOnlyTags(string $html): bool
     {
-        $html = preg_replace('/<[^>]*>/is', '', $html);
+        $html = preg_replace('/<[^>]*>/isu', '', $html);
         $html = str_replace('&nbsp;', '', $html);
         $html = trim($html);
 
@@ -263,14 +263,14 @@ class ExtractContent
     private function eliminateUselessTags(string $html): string
     {
         // eliminate useless symbols
-        $html = preg_replace('/[\342\200\230-\342\200\235]|[\342\206\220-\342\206\223]|[\342\226\240-\342\226\275]|[\342\227\206-\342\227\257]|\342\230\205|\342\230\206/', '', $html);
+        $html = preg_replace('/[\342\200\230-\342\200\235]|[\342\206\220-\342\206\223]|[\342\226\240-\342\226\275]|[\342\227\206-\342\227\257]|\342\230\205|\342\230\206/u', '', $html);
 
         // eliminate useless html tags
-        $html = preg_replace('/<(script|style|select|noscript)[^>]*>.*?<\/\1\s*>/is', '', $html);
-        $html = preg_replace('/<!--.*?-->/s', '', $html);
-        $html = preg_replace('/<![A-Za-z].*?>/', '', $html);
-        $html = preg_replace('/<div\s[^>]*class\s*=\s*[\'"]?alpslab-slide["\']?[^>]*>.*?<\/div\s*>/s', '', $html);
-        $html = preg_replace('/<div\s[^>]*(id|class)\s*=\s*[\'"]?\S*more\S*["\']?[^>]*>/i', '', $html);
+        $html = preg_replace('/<(script|style|select|noscript)[^>]*>.*?<\/\1\s*>/isu', '', $html);
+        $html = preg_replace('/<!--.*?-->/su', '', $html);
+        $html = preg_replace('/<![A-Za-z].*?>/u', '', $html);
+        $html = preg_replace('/<div\s[^>]*class\s*=\s*[\'"]?alpslab-slide["\']?[^>]*>.*?<\/div\s*>/su', '', $html);
+        $html = preg_replace('/<div\s[^>]*(id|class)\s*=\s*[\'"]?\S*more\S*["\']?[^>]*>/iu', '', $html);
 
         return $html;
     }
@@ -283,12 +283,12 @@ class ExtractContent
     private function eliminateLink(string $html): string
     {
         $count = 0;
-        $notLinked = preg_replace_callback('/<a\s[^>]*>.*?<\/a\s*>/is', function ($matched) use (&$count) {
+        $notLinked = preg_replace_callback('/<a\s[^>]*>.*?<\/a\s*>/ius', function () use (&$count) {
             $count++;
 
             return '';
         }, $html);
-        $notLinked = preg_replace('/<form\s[^>]*>.*?<\/form\s *>/ims', '', $notLinked);
+        $notLinked = preg_replace('/<form\s[^>]*>.*?<\/form\s *>/imsu', '', $notLinked);
         $notLinked = strip_tags($notLinked);
 
         if (strlen($notLinked) < 20 * $count || $this->isLinkList($html)) {
@@ -305,12 +305,12 @@ class ExtractContent
      */
     private function isLinkList(string $html): bool
     {
-        if (preg_match('/<(?:ul|dl|ol)(.+?)<\/(?:ul|dl|ol)>/is', $html, $matched)) {
+        if (preg_match('/<(?:ul|dl|ol)(.+?)<\/(?:ul|dl|ol)>/isu', $html, $matched)) {
             $listPart = $matched[1];
-            $outside = preg_replace('/<(?:ul|dl)(.+?)<\/(?:ul|dl)>/is', '', $html);
-            $outside = preg_replace('/<.+?>/s', '', $outside);
-            $outside = preg_replace('/\s+/s', ' ', $outside);
-            $list = preg_split('/<li[^>]*>/', $listPart);
+            $outside = preg_replace('/<(?:ul|dl)(.+?)<\/(?:ul|dl)>/isu', '', $html);
+            $outside = preg_replace('/<.+?>/su', '', $outside);
+            $outside = preg_replace('/\s+/su', ' ', $outside);
+            $list = preg_split('/<li[^>]*>/u', $listPart);
             array_shift($list);
 
             $rate = $this->evaluateList($list);
@@ -337,7 +337,7 @@ class ExtractContent
 
         $hit = 0;
         foreach ($list as $line) {
-            if (preg_match('/<a\s+href=([\'"]?)([^"\'\s]+)\1/is', $line)) {
+            if (preg_match('/<a\s+href=([\'"]?)([^"\'\s]+)\1/isu', $line)) {
                 $hit++;
             }
         }
