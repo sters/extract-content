@@ -59,6 +59,21 @@ class ExtractContent
     public function __construct(string $html, array $options = [])
     {
         $this->html = $html;
+        try {
+            $this->html = mb_convert_encoding($html, 'utf-8', [
+                'UTF-7',
+                'ISO-2022-JP',
+                'UTF-8',
+                'SJIS',
+                'JIS',
+                'eucjp-win',
+                'sjis-win',
+                'EUC-JP',
+                'ASCII',
+            ]);
+        } catch (\Throwable $ex) {
+            $this->html = mb_convert_encoding($html, 'utf-8', 'auto');
+        }
         $this->options = $options + static::DEFAULT_OPTIONS;
     }
 
@@ -162,7 +177,7 @@ class ExtractContent
             $body,
             $score,
         ];
-        $body = array_reduce($bodyList, function($a, $b) {
+        $body = array_reduce($bodyList, function ($a, $b) {
             if ($a[1] >= $b[1]) {
                 return $a;
             } else {

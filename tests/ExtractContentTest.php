@@ -165,7 +165,7 @@ class ExtractContentTest extends TestCase
 
     public function testAnalyse()
     {
-        $this->markTestSkipped('The test using Wikipedia content.');
+        $this->markTestSkipped('The test using Online HTML content.');
 
         $extractor = new ExtractContent(file_get_contents('https://en.wikipedia.org/wiki/PHPUnit'));
 
